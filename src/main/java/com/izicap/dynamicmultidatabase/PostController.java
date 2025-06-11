@@ -5,17 +5,19 @@ import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.ApiParam;
 import io.swagger.annotations.ApiResponse;
 import io.swagger.annotations.ApiResponses;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.Random;
-
 @RestController
 @Api(tags = "Post Management", description = "Operations for managing posts across multiple tenant databases")
 public class PostController {
+    
+    private static final Logger logger = LoggerFactory.getLogger(PostController.class);
     
     @Autowired
     private PostRepository postRepository;
@@ -40,24 +42,36 @@ public class PostController {
             )
             @RequestParam(defaultValue = "main") String client) {
         
+        logger.info("Received request to fetch posts for client: {}", client);
+        
         try {
+            DBTypeEnum dbType;
             switch (client) {
                 case "client-a":
-                    DBContextHolder.setCurrentDb(DBTypeEnum.CLIENT_A);
+                    dbType = DBTypeEnum.CLIENT_A;
                     break;
                 case "client-b":
-                    DBContextHolder.setCurrentDb(DBTypeEnum.CLIENT_B);
+                    dbType = DBTypeEnum.CLIENT_B;
                     break;
                 default:
-                    DBContextHolder.setCurrentDb(DBTypeEnum.MAIN);
+                    dbType = DBTypeEnum.MAIN;
                     break;
             }
             
+            logger.debug("Setting database context to: {}", dbType);
+            DBContextHolder.setCurrentDb(dbType);
+            
+            logger.debug("Fetching posts from database: {}", dbType);
             Iterable<Post> posts = postRepository.findAll();
+            
+            logger.info("Successfully retrieved posts for client: {} from database: {}", client, dbType);
             return ResponseEntity.ok(posts);
             
+        } catch (Exception e) {
+            logger.error("Error occurred while fetching posts for client: {}", client, e);
+            return ResponseEntity.internalServerError().build();
         } finally {
-            // Clear the context to prevent memory leaks
+            logger.debug("Clearing database context for client: {}", client);
             DBContextHolder.clear();
         }
     }
@@ -74,26 +88,36 @@ public class PostController {
         @ApiResponse(code = 500, message = "Error occurred while initializing data")
     })
     public ResponseEntity<String> initialData() {
+        logger.info("Starting initialization of sample data across all databases");
+        
         try {
             // Insert into main database
+            logger.debug("Inserting sample data into MAIN database");
             DBContextHolder.setCurrentDb(DBTypeEnum.MAIN);
-            postRepository.save(new Post(1L, "Main DB"));
+            Post mainPost = postRepository.save(new Post(1L, "Main DB"));
+            logger.debug("Successfully saved post in MAIN database: {}", mainPost);
             
             // Insert into client A database
+            logger.debug("Inserting sample data into CLIENT_A database");
             DBContextHolder.setCurrentDb(DBTypeEnum.CLIENT_A);
-            postRepository.save(new Post(1L, "Client A DB"));
+            Post clientAPost = postRepository.save(new Post(1L, "Client A DB"));
+            logger.debug("Successfully saved post in CLIENT_A database: {}", clientAPost);
             
             // Insert into client B database
+            logger.debug("Inserting sample data into CLIENT_B database");
             DBContextHolder.setCurrentDb(DBTypeEnum.CLIENT_B);
-            postRepository.save(new Post(1L, "Client B DB"));
+            Post clientBPost = postRepository.save(new Post(1L, "Client B DB"));
+            logger.debug("Successfully saved post in CLIENT_B database: {}", clientBPost);
             
+            logger.info("Successfully initialized sample data in all databases");
             return ResponseEntity.ok("Success! Sample data created in all databases.");
             
         } catch (Exception e) {
+            logger.error("Error occurred while initializing sample data", e);
             return ResponseEntity.internalServerError()
                 .body("Error initializing data: " + e.getMessage());
         } finally {
-            // Clear the context to prevent memory leaks
+            logger.debug("Clearing database context after data initialization");
             DBContextHolder.clear();
         }
     }
