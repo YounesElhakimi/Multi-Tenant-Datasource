@@ -1,0 +1,43 @@
+# Docker Compose override for development
+# This file provides development-specific configurations
+
+version: '3.8'
+
+services:
+  app:
+    environment:
+      # Development logging levels
+      LOGGING_LEVEL_COM_IZICAP_DYNAMICMULTIDATABASE: DEBUG
+      LOGGING_LEVEL_ORG_HIBERNATE_SQL: DEBUG
+      LOGGING_LEVEL_ORG_HIBERNATE_TYPE_DESCRIPTOR_SQL_BASICBINDER: TRACE
+      
+      # Development JVM options
+      JAVA_OPTS: "-Xms256m -Xmx512m -XX:+UseG1GC"
+    volumes:
+      # Mount source code for hot reload (if using dev tools)
+      - ./src:/app/src:ro
+      - ./logs:/app/logs
+    ports:
+      # Expose debug port for remote debugging
+      - "5005:5005"
+    command: >
+      java -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005
+      -jar app.jar
+
+  mysql-main:
+    environment:
+      # Development MySQL configuration
+      MYSQL_GENERAL_LOG: 1
+      MYSQL_GENERAL_LOG_FILE: /var/lib/mysql/general.log
+    volumes:
+      # Mount logs for debugging
+      - ./docker/mysql/logs:/var/lib/mysql/logs
+
+  mysql-client-a:
+    environment:
+      # Development MySQL configuration
+      MYSQL_GENERAL_LOG: 1
+      MYSQL_GENERAL_LOG_FILE: /var/lib/mysql/general.log
+    volumes:
+      # Mount logs for debugging
+      - ./docker/mysql/logs:/var/lib/mysql/logs

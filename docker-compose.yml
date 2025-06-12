@@ -1,0 +1,120 @@
+version: '3.8'
+
+services:
+  # MySQL Database for Main tenant
+  mysql-main:
+    image: mysql:8.0
+    container_name: multi-db-main
+    environment:
+      MYSQL_ROOT_PASSWORD: admin
+      MYSQL_DATABASE: multi_main
+      MYSQL_USER: app_user
+      MYSQL_PASSWORD: app_password
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_main_data:/var/lib/mysql
+      - ./docker/mysql/init:/docker-entrypoint-initdb.d
+    networks:
+      - multi-db-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-padmin"]
+      timeout: 20s
+      retries: 10
+      interval: 10s
+      start_period: 40s
+
+  # MySQL Database for Client A tenant
+  mysql-client-a:
+    image: mysql:8.0
+    container_name: multi-db-client-a
+    environment:
+      MYSQL_ROOT_PASSWORD: admin
+      MYSQL_DATABASE: multi_client_a
+      MYSQL_USER: app_user
+      MYSQL_PASSWORD: app_password
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql_client_a_data:/var/lib/mysql
+      - ./docker/mysql/init:/docker-entrypoint-initdb.d
+    networks:
+      - multi-db-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-padmin"]
+      timeout: 20s
+      retries: 10
+      interval: 10s
+      start_period: 40s
+
+  # Spring Boot Application
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: multi-db-app
+    environment:
+      # Database Configuration
+      APP_DATASOURCE_MAIN_JDBC_URL: jdbc:mysql://mysql-main:3306/multi_main?useSSL=false&allowPublicKeyRetrieval=true
+      APP_DATASOURCE_MAIN_USERNAME: root
+      APP_DATASOURCE_MAIN_PASSWORD: admin
+      
+      APP_DATASOURCE_CLIENTA_JDBC_URL: jdbc:mysql://mysql-client-a:3306/multi_client_a?useSSL=false&allowPublicKeyRetrieval=true
+      APP_DATASOURCE_CLIENTA_USERNAME: root
+      APP_DATASOURCE_CLIENTA_PASSWORD: admin
+      
+      APP_DATASOURCE_CLIENTB_JDBC_URL: jdbc:mysql://mysql-main:3306/multi_client_b?useSSL=false&allowPublicKeyRetrieval=true
+      APP_DATASOURCE_CLIENTB_USERNAME: root
+      APP_DATASOURCE_CLIENTB_PASSWORD: admin
+      
+      # Spring Configuration
+      SPRING_PROFILES_ACTIVE: docker
+      SERVER_PORT: 8080
+      
+      # Logging Configuration
+      LOGGING_LEVEL_COM_IZICAP_DYNAMICMULTIDATABASE: INFO
+      LOGGING_LEVEL_ORG_HIBERNATE_SQL: INFO
+    ports:
+      - "8080:8080"
+    depends_on:
+      mysql-main:
+        condition: service_healthy
+      mysql-client-a:
+        condition: service_healthy
+    networks:
+      - multi-db-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      timeout: 10s
+      retries: 5
+      interval: 30s
+      start_period: 60s
+    restart: unless-stopped
+
+  # phpMyAdmin for database management (optional)
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin:latest
+    container_name: multi-db-phpmyadmin
+    environment:
+      PMA_ARBITRARY: 1
+      PMA_HOST: mysql-main
+      PMA_PORT: 3306
+      PMA_USER: root
+      PMA_PASSWORD: admin
+    ports:
+      - "8081:80"
+    depends_on:
+      - mysql-main
+      - mysql-client-a
+    networks:
+      - multi-db-network
+
+volumes:
+  mysql_main_data:
+    driver: local
+  mysql_client_a_data:
+    driver: local
+
+networks:
+  multi-db-network:
+    driver: bridge
